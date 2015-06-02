@@ -15,6 +15,11 @@ void setup() {
 
   // Configure the serial port for 57600 baud
   Serial.begin(57600);
+  
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for Leonardo only
+  }
+
   Serial.println("LocoNet Monitor");
 }
 
