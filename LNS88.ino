@@ -65,6 +65,12 @@ void HandleS88(S88_t* S88) {
   for (module; module++; module < S88->State.maxModules) {
     if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
       LocoNet.reportSensor(lnconfig.addr + lncv[1+(module*2)], S88->Config.data[current_buffer][module]);
+      Serial.print("LN Sensor addr: ");
+      Serial.println(lnconfig.addr + lncv[1+(module*2)]);
+      Serial.print(" Old value: " );
+      Serial.println(S88->Config.data[other_buffer][module]);
+      Serial.print(" New value: " );
+      Serial.println(S88->Config.data[current_buffer][module]);
     }
   }
 }
