@@ -64,7 +64,7 @@ void HandleS88(S88_t* S88) {
   uint8_t other_buffer = (S88->Config.activeData == 0) ? 1 : 0;
   for (module; module++; module < S88->State.maxModules) {
     if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
-      notifySensor(lnconfig.addr + lncv[1+(module*2)], S88->Config.data[current_buffer][module]);
+      LocoNet.reportSensor(lnconfig.addr + lncv[1+(module*2)], S88->Config.data[current_buffer][module]);
     }
   }
 }
