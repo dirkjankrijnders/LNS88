@@ -1,4 +1,4 @@
-#include <LocoNet.h>
+//#include <LocoNet.h>
 #include <S88.h>
 #include "LNCV.h"
 //#include "LNCV_data.h"
@@ -12,40 +12,52 @@
 //uint16_t moduleAddr;
 //uint16_t lncv[LNCV_COUNT];
 
-lnMsg *LnPacket;
+//lnMsg *LnPacket;
 
-LocoNetCVClass lnCV;
+//LocoNetCVClass lnCV;
 uint8_t* lncv;
 
 boolean programmingMode;
 
 S88_t S88;
 
-LNCV_LNS88_t lnconfig EEMEM = {
+LNCV_LNS88_t lnconfig_ee EEMEM = {
   #include "LNCV_data.h"
 };
 
+LNCV_LNS88_t lnconfig;
+
 void setup() {
   // put your setup code here, to run once: 
-  SetupS88Hardware();
-  LocoNet.init();
+  SetupS88Hardware(); //&S88);
+  //LocoNet.init();
 
+  eeprom_read_block(&lnconfig, &lnconfig_ee, 18);
   lncv = (uint8_t*)&lnconfig;
-  StartS88Read(&S88, FULL);
   Serial.begin(56700);
-  
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for Leonardo only
+  }
+  Serial.print(S88.State.state);
+  Serial.println("LNS88");
+  StartS88Read(&S88, FULL);
+  Serial.print(S88.State.state);
+  interrupts();
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-
+  Serial.println(S88.State.state);
+  Serial.println(S88.State.CLKC);
+ // Serial.println(TCNT3);
   if (IsReady(&S88)) {
     Serial.println("Ready");
     HandleS88(&S88);
     StartS88Read(&S88, FULL);
   }
-  LnPacket = LocoNet.receive();
+/*  LnPacket = LocoNet.receive();
   if (LnPacket) {
+    Serial.print("Yo!");
     uint8_t packetConsumed(LocoNet.processSwitchSensorMessage(LnPacket));
     if (packetConsumed == 0) {
       Serial.print("Loop ");
@@ -54,7 +66,7 @@ void loop() {
       packetConsumed = lnCV.processLNCVMessage(LnPacket);
       Serial.print("End Loop\n");
     }
-  }
+  }*/
 }
 
 void HandleS88(S88_t* S88) {
@@ -74,7 +86,10 @@ void HandleS88(S88_t* S88) {
     }
   }
 }
+
+/*
 void commitLNCVUpdate() {
+  eeprom_write_block(&lnconfig, &lnconfig_ee, 18);
   Serial.print("Module Address is now: ");
   Serial.print(lnconfig.addr);
   Serial.print("\n");
@@ -127,7 +142,8 @@ int8_t notifyLNCVread(uint16_t ArtNr, uint16_t lncvAddress, uint16_t,
         if (lncvAddress == 0 ){
           lncvValue = lnconfig.addr;
         } else {
-          lncvValue = *(uint8_t*)(&lnconfig + 1 + lncvAddress);
+          lncvValue = *(uint16_t*)(&lnconfig + lncvAddress);
+          
         }
 //        lncvValue = lncv[lncvAddress];
         Serial.print(" LNCV Value: ");
@@ -162,6 +178,11 @@ int8_t notifyLNCVprogrammingStart(uint16_t & ArtNr, uint16_t & ModuleAddress) {
       Serial.print("moduleBC ENTERING PROGRAMMING MODE\n");
       ModuleAddress = lnconfig.addr;
       return LNCV_LACK_OK;
+    } else {
+      Serial.print("Req Addr: ");
+      Serial.print(ModuleAddress);      
+      Serial.print("My Addr: ");
+      Serial.print(lnconfig.addr);
     }
   }
   Serial.print("Ignoring Request.\n");
@@ -188,7 +209,7 @@ int8_t notifyLNCVwrite(uint16_t ArtNr, uint16_t lncvAddress,
       if (lncvAddress == 0)
         lnconfig.addr = lncvValue;
        else
-        *(uint8_t*)(&lnconfig + 1 + lncvAddress) = (uint8_t)lncvValue;
+        *(uint16_t*)(&lnconfig + lncvAddress) = (uint16_t)lncvValue;
       return LNCV_LACK_OK;
     }
     else {
