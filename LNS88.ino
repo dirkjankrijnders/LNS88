@@ -1,14 +1,25 @@
 #include <LocoNet.h>
 #include <S88.h>
 #include "LNCV.h"
+#define DEBUG(x) 
+/* Include the CV handling and the pin functionalities */
+#include "decoder_conf.h"
+#include "cvaccess.h"
+
+decoder_conf_t EEMEM _CV = {
+#include "default_conf.h"
+};
+
 //#include "LNCV_data.h"
 
-#define LOCONET_TX_PIN 7
+#define LOCONET_TX_PIN 6
 #define LNCV_COUNT 10
 
 // Item Number (Art.-Nr.): 50010
-#define ARTNR 5001
+#define ARTNR 10003
 
+void HandleS88(S88_t* S88);
+void dumpPacket(UhlenbrockMsg & ub); 
 //uint16_t moduleAddr;
 //uint16_t lncv[LNCV_COUNT];
 
@@ -17,72 +28,76 @@ lnMsg *LnPacket;
 LocoNetCVClass lnCV;
 uint8_t* lncv;
 
-boolean programmingMode;
+int programmingMode;
 
 S88_t S88;
+#define MAX 31
 
-LNCV_LNS88_t lnconfig EEMEM = {
-  #include "LNCV_data.h"
+
+extern int __bss_start, __bss_end;
+
+int freeRam () {
+  extern int __heap_start, *__brkval;
+  int v;
+  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval);
 };
 
-void setup() {
-  // put your setup code here, to run once: 
-  SetupS88Hardware();
-  LocoNet.init();
+void setup(){
 
-  lncv = (uint8_t*)&lnconfig;
-  StartS88Read(&S88, FULL);
-  Serial.begin(56700);
-  
+	SetupS88Hardware(&S88);
+
+	uint16_t clk = 20;
+	SetClock(&S88, &clk, false);
+	cmdDispatcher(&S88, "s\1\0\0");
+
+	S88.State.maxModules = 1;
+	S88.Config.activeData = 0;
+	LocoNet.init();
+	sei();
+	StartS88Read(&S88, FULL);
+	LocoNet.reportSensor(654, 1);
 }
-
-void loop() {
-  // put your main code here, to run repeatedly:
-
-  if (IsReady(&S88)) {
-    Serial.println("Ready");
-    HandleS88(&S88);
-    StartS88Read(&S88, FULL);
-  }
-  LnPacket = LocoNet.receive();
-  if (LnPacket) {
-    uint8_t packetConsumed(LocoNet.processSwitchSensorMessage(LnPacket));
-    if (packetConsumed == 0) {
-      Serial.print("Loop ");
-      Serial.print((int)LnPacket);
-      dumpPacket(LnPacket->ub);
-      packetConsumed = lnCV.processLNCVMessage(LnPacket);
-      Serial.print("End Loop\n");
-    }
-  }
+void loop(){
+// put your main code here, to run repeatedly:
+		if (IsReady(&S88)) {
+				////Serial.println("Ready");
+			HandleS88(&S88);
+			SwapAndClearS88Data(&S88);
+			StartS88Read(&S88, FULL);
+		};
+  		LnPacket = LocoNet.receive();
+		if (LnPacket) {
+			uint8_t packetConsumed(LocoNet.processSwitchSensorMessage(LnPacket));
+			if (packetConsumed == 0) {
+				dumpPacket(LnPacket->ub);
+				packetConsumed = lnCV.processLNCVMessage(LnPacket);
+			}
+		}
 }
 
 void HandleS88(S88_t* S88) {
-  uint8_t module = 0;
-  //uint8_t half = 0;
-  uint8_t current_buffer = S88->Config.activeData;
-  uint8_t other_buffer = (S88->Config.activeData == 0) ? 1 : 0;
-  for (module; module++; module < S88->State.maxModules) {
-    if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
-      LocoNet.reportSensor(lnconfig.addr + lncv[1+(module*2)], S88->Config.data[current_buffer][module]);
-      Serial.print("LN Sensor addr: ");
-      Serial.println(lnconfig.addr + lncv[1+(module*2)]);
-      Serial.print(" Old value: " );
-      Serial.println(S88->Config.data[other_buffer][module]);
-      Serial.print(" New value: " );
-      Serial.println(S88->Config.data[current_buffer][module]);
-    }
-  }
-}
-void commitLNCVUpdate() {
-  Serial.print("Module Address is now: ");
-  Serial.print(lnconfig.addr);
-  Serial.print("\n");
+	uint8_t module = 0;
+	//uint8_t half = 0;
+	uint8_t current_buffer = S88->Config.activeData;
+	uint8_t other_buffer = (S88->Config.activeData == 0) ? 1 : 0;
+	for (; module < S88->State.maxModules; module++) {
+		if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
+      uint16_t bit = __builtin_ctzl(S88->Config.data[other_buffer][module] ^ S88->Config.data[current_buffer][module]) + 1;
+			LocoNet.reportSensor(bit, S88->Config.data[current_buffer][module]);
+			//Serial.print("LN Sensor addr: ");
+			//Serial.println(lnconfig.addr + lncv[1+(module*2)]);
+			//Serial.print(" Old value: " );
+			//Serial.println(S88->Config.data[other_buffer][module]);
+			//Serial.print(" New value: " );
+			//Serial.println(S88->Config.data[current_buffer][module]);
+		}
+	}
 }
 
 void dumpPacket(UhlenbrockMsg & ub) {
+#ifdef DEBUG_OUTPUT
   Serial.print(" PKT: ");
-  Serial.print(ub.command, HEX);
+  Serial.print(ub.command);
   Serial.print(" ");
   Serial.print(ub.mesg_size, HEX);
   Serial.print(" ");
@@ -101,9 +116,10 @@ void dumpPacket(UhlenbrockMsg & ub) {
     Serial.print(" ");
   }
   Serial.write("\n");
+#endif
 }
 
-  /**
+/**
    * Notifies the code on the reception of a read request.
    * Note that without application knowledge (i.e., art.-nr., module address
    * and "Programming Mode" state), it is not possible to distinguish
@@ -111,39 +127,74 @@ void dumpPacket(UhlenbrockMsg & ub) {
    */
 int8_t notifyLNCVread(uint16_t ArtNr, uint16_t lncvAddress, uint16_t,
     uint16_t & lncvValue) {
-  Serial.print("Enter notifyLNCVread(");
-  Serial.print(ArtNr, HEX);
-  Serial.print(", ");
-  Serial.print(lncvAddress, HEX);
-  Serial.print(", ");
-  Serial.print(", ");
-  Serial.print(lncvValue, HEX);
-  Serial.print(")");
+
+  DEBUG("Enter notifyLNCVread(");
+  DEBUG(ArtNr);
+  DEBUG(", ");
+  DEBUG(lncvAddress);
+  DEBUG(", ");
+  DEBUG(", ");
+  DEBUG(lncvValue);
+  DEBUG(")\n");
+  
   // Step 1: Can this be addressed to me?
   // All ReadRequests contain the ARTNR. For starting programming, we do not accept the broadcast address.
   if (programmingMode) {
     if (ArtNr == ARTNR) {
-      if (lncvAddress < 16) {
-        if (lncvAddress == 0 ){
-          lncvValue = lnconfig.addr;
-        } else {
-          lncvValue = *(uint8_t*)(&lnconfig + 1 + lncvAddress);
+    if (lncvAddress == 5){
+      lncvValue = MAX;
+      return LNCV_LACK_OK;
+    } else if (lncvAddress < 10) {
+        lncvValue = read_cv(&_CV, lncvAddress);
+
+        DEBUG("\nEeprom address: ");
+        DEBUG(((uint16_t)&(_CV.address)+cv2address(lncvAddress)));
+        DEBUG(" LNCV Value: ");
+        DEBUG(lncvValue);
+        DEBUG("\n");
+
+        return LNCV_LACK_OK;
+      } else if (lncvAddress == 1024) {
+        lncvValue = freeRam();
+        return LNCV_LACK_OK;
+      } else if (lncvAddress == 1025) {
+        lncvValue = __bss_start;
+        return LNCV_LACK_OK;
+      } else if (lncvAddress == 1026) {
+        lncvValue = __bss_end;
+        return LNCV_LACK_OK;
+      } else if (lncvAddress == 1027) {
+        lncvValue = SP;
+        return LNCV_LACK_OK;
+      } else if ((lncvAddress > 1027) && (lncvAddress < 1033)){
+        LnBufStats* stats = LocoNet.getStats();
+        switch (lncvAddress) {
+          case 1028:
+          lncvValue = stats->RxPackets;
+          break;
+          case 1029:
+          lncvValue = stats->RxErrors;
+          break;
+          case 1030:
+          lncvValue = stats->TxPackets;
+          break;
+          case 1031:
+          lncvValue = stats->TxErrors;
+          break;
+          case 1032:
+          lncvValue = stats->Collisions;
         }
-//        lncvValue = lncv[lncvAddress];
-        Serial.print(" LNCV Value: ");
-        Serial.print(lncvValue);
-        Serial.print("\n");
         return LNCV_LACK_OK;
       } else {
         // Invalid LNCV address, request a NAXK
         return LNCV_LACK_ERROR_UNSUPPORTED;
       }
     } else {
-      Serial.print("ArtNr invalid.\n");
+      DEBUG("ArtNr invalid.\n");
       return -1;
     }
   } else {
-    Serial.print("Ignoring Request.\n");
+    DEBUG("Ignoring Request.\n");
     return -1;
   }
 }
@@ -151,20 +202,23 @@ int8_t notifyLNCVread(uint16_t ArtNr, uint16_t lncvAddress, uint16_t,
 int8_t notifyLNCVprogrammingStart(uint16_t & ArtNr, uint16_t & ModuleAddress) {
   // Enter programming mode. If we already are in programming mode,
   // we simply send a response and nothing else happens.
-  Serial.print("notifyLNCVProgrammingStart ");
+  uint16_t MyModuleAddress = eeprom_read_byte(&_CV.address);
+
+  DEBUG(ArtNr);
+  DEBUG(ModuleAddress);
+  DEBUG(MyModuleAddress);
+
+
   if (ArtNr == ARTNR) {
-    Serial.print("artnrOK ");
-    if (ModuleAddress == lnconfig.addr) {
-      Serial.print("moduleUNI ENTERING PROGRAMMING MODE\n");
+    if (ModuleAddress == MyModuleAddress) {
       programmingMode = true;
+      DEBUG("Programming started");
       return LNCV_LACK_OK;
     } else if (ModuleAddress == 0xFFFF) {
-      Serial.print("moduleBC ENTERING PROGRAMMING MODE\n");
-      ModuleAddress = lnconfig.addr;
+      ModuleAddress = eeprom_read_byte(&_CV.address);
       return LNCV_LACK_OK;
     }
   }
-  Serial.print("Ignoring Request.\n");
   return -1;
 }
 
@@ -173,59 +227,75 @@ int8_t notifyLNCVprogrammingStart(uint16_t & ArtNr, uint16_t & ModuleAddress) {
    */
 int8_t notifyLNCVwrite(uint16_t ArtNr, uint16_t lncvAddress,
     uint16_t lncvValue) {
-  Serial.print("notifyLNCVwrite, ");
   //  dumpPacket(ub);
   if (!programmingMode) {
-    Serial.print("not in Programming Mode.\n");
     return -1;
   }
 
-  if (ArtNr == ARTNR) {
-    Serial.print("Artnr OK, ");
+  DEBUG("Enter notifyLNCVwrite(");
+  DEBUG(ArtNr);
+  DEBUG(", ");
+  DEBUG(lncvAddress);
+  DEBUG(", ");
+  DEBUG(", ");
+  DEBUG(lncvValue);
+  DEBUG(")\n");
 
-    if (lncvAddress < 11) {
-//      offset = lncvAddrress;
-      if (lncvAddress == 0)
-        lnconfig.addr = lncvValue;
-       else
-        *(uint8_t*)(&lnconfig + 1 + lncvAddress) = (uint8_t)lncvValue;
+  if (ArtNr == ARTNR) {
+
+    if (lncvAddress < 320) {
+      DEBUG(cv2address(lncvAddress));
+      DEBUG(bytesizeCV(lncvAddress));
+      DEBUG((uint8_t)lncvValue);
+      write_cv(&_CV, lncvAddress, lncvValue);
       return LNCV_LACK_OK;
     }
     else {
       return LNCV_LACK_ERROR_UNSUPPORTED;
     }
-
   }
   else {
-    Serial.print("Artnr Invalid.\n");
+
+    DEBUG("Artnr Invalid.\n");
     return -1;
   }
 }
 
+void commitLNCVUpdate() {
+   // Reset the decoder to reread the configuration
+  //asm volatile ("  jmp 0");
+}
   /**
    * Notifies the code on the reception of a request to end programming mode
    */
 void notifyLNCVprogrammingStop(uint16_t ArtNr, uint16_t ModuleAddress) {
-  Serial.print("notifyLNCVprogrammingStop ");
+  DEBUG("notifyLNCVprogrammingStop ");
   if (programmingMode) {
-    if (ArtNr == ARTNR && ModuleAddress == lnconfig.addr) {
+    if (ArtNr == ARTNR && ModuleAddress == eeprom_read_byte(&_CV.address)) {
       programmingMode = false;
-      Serial.print("End Programing Mode.\n");
+      DEBUG("End Programing Mode.\n");
       commitLNCVUpdate();
     }
     else {
       if (ArtNr != ARTNR) {
-        Serial.print("Wrong Artnr.\n");
+        DEBUG("Wrong Artnr.\n");
         return;
       }
-      if (ModuleAddress != lnconfig.addr) {
-        Serial.print("Wrong Module Address.\n");
+      if (ModuleAddress != eeprom_read_byte(&_CV.address)) {
+        DEBUG("Wrong Module Address.\n");
         return;
       }
     }
   }
   else {
-    Serial.print("Ignoring Request.\n");
+    DEBUG("Ignoring Request.\n");
   }
+}
+
+int8_t notifyLNCVdiscover( uint16_t & ArtNr, uint16_t & ModuleAddress ) {
+  uint16_t MyModuleAddress = eeprom_read_byte(&_CV.address);
+  ModuleAddress = MyModuleAddress;
+  ArtNr = ARTNR;
+  return LNCV_LACK_OK;
 }
 
