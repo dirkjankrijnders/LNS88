@@ -46,7 +46,7 @@ void setup(){
 
 	SetupS88Hardware(&S88);
 
-	uint16_t clk = 20;
+	uint16_t clk = read_cv(&_CV, 9);
 	SetClock(&S88, &clk, false);
 	cmdDispatcher(&S88, "s\1\0\0");
 
@@ -83,7 +83,7 @@ void HandleS88(S88_t* S88) {
 	for (; module < S88->State.maxModules; module++) {
 		if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
       uint16_t bit = __builtin_ctzl(S88->Config.data[other_buffer][module] ^ S88->Config.data[current_buffer][module]) + 1;
-			LocoNet.reportSensor(bit, S88->Config.data[current_buffer][module]);
+			LocoNet.reportSensor((read_cv(&_CV, 1) *16)+bit, S88->Config.data[current_buffer][module]);
 			//Serial.print("LN Sensor addr: ");
 			//Serial.println(lnconfig.addr + lncv[1+(module*2)]);
 			//Serial.print(" Old value: " );
