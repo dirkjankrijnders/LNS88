@@ -45,12 +45,9 @@ int freeRam () {
 void setup(){
 
 	SetupS88Hardware(&S88);
-
+  SetNoModules(&S88, read_cv(&_CV, 6), 0);
 	uint16_t clk = read_cv(&_CV, 9);
 	SetClock(&S88, &clk, false);
-	cmdDispatcher(&S88, "s\1\0\0");
-
-	S88.State.maxModules = 1;
 	S88.Config.activeData = 0;
 	LocoNet.init();
 	sei();
