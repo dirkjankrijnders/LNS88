@@ -67,11 +67,7 @@ void loop(){
 		};
   		LnPacket = LocoNet.receive();
 		if (LnPacket) {
-			uint8_t packetConsumed(LocoNet.processSwitchSensorMessage(LnPacket));
-			if (packetConsumed == 0) {
-				dumpPacket(LnPacket->ub);
-				packetConsumed = lnCV.processLNCVMessage(LnPacket);
-			}
+				lnCV.processLNCVMessage(LnPacket);
 		}
 }
 
