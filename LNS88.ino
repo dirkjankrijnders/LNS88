@@ -56,7 +56,7 @@ void setup(){
 }
 void loop(){
 // put your main code here, to run repeatedly:
-		if (IsReady(&S88)) {
+		if (IsReady(&S88) && !programmingMode) {
 				////Serial.println("Ready");
 			HandleS88(&S88);
 			SwapAndClearS88Data(&S88);
@@ -64,11 +64,7 @@ void loop(){
 		};
   		LnPacket = LocoNet.receive();
 		if (LnPacket) {
-			uint8_t packetConsumed(LocoNet.processSwitchSensorMessage(LnPacket));
-			if (packetConsumed == 0) {
-				dumpPacket(LnPacket->ub);
-				packetConsumed = lnCV.processLNCVMessage(LnPacket);
-			}
+				lnCV.processLNCVMessage(LnPacket);
 		}
 }
 
