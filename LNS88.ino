@@ -59,7 +59,7 @@ void setup(){
 }
 void loop(){
 // put your main code here, to run repeatedly:
-		if (IsReady(&S88)) {
+		if (IsReady(&S88) && !programmingMode) {
 				////Serial.println("Ready");
 			HandleS88(&S88);
 			SwapAndClearS88Data(&S88);
