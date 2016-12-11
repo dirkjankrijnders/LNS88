@@ -76,7 +76,8 @@ void HandleS88(S88_t* S88) {
 	for (; module < S88->State.maxModules; module++) {
 		if (S88->Config.data[other_buffer][module] != S88->Config.data[current_buffer][module]) {
       uint16_t bit = __builtin_ctzl(S88->Config.data[other_buffer][module] ^ S88->Config.data[current_buffer][module]) + 1;
-			LocoNet.reportSensor((read_cv(&_CV, 1) *16)+bit, S88->Config.data[current_buffer][module]);
+      uint8_t state = ((S88->Config.data[current_buffer][module] && ((uint16_t)1 << bit)) == 1);
+			LocoNet.reportSensor((read_cv(&_CV, 1) *16)+bit, state);
 			//Serial.print("LN Sensor addr: ");
 			//Serial.println(lnconfig.addr + lncv[1+(module*2)]);
 			//Serial.print(" Old value: " );
